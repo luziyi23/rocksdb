@@ -21,9 +21,6 @@ private:
                                  std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& env_options) override;
 
-  // if to delete WAL file, we should recycle it to avoid zero-out again
-  Status DeleteFile(const std::string& fname) override;
-
   // The WAL file may have extra format, so should be handled before reading
   Status NewSequentialFile(const std::string& fname,
                                    std::unique_ptr<SequentialFile>* result,

@@ -2,8 +2,8 @@ bench_file_path="/home/lzy/rocksdb/db_bench"
 
 bench_db_path="/mnt/optane-ssd/db"
 # bench_db_path="/mnt/ext4-128/db"
-wal_dir="/mnt/optane-ssd/db"
-# wal_dir="/mnt/ext4-128/db"
+# wal_dir="/mnt/optane-ssd/db"
+wal_dir="/mnt/ext4-128/db"
 threads=1
 value_size=100
 bench_benchmarks="fillseq"
@@ -14,7 +14,7 @@ max_background_jobs=16
 max_bytes_for_level_base="`expr 8 \* 1024 \* 1024 \* 1024`" #default 256 \* 1024 \* 1024
 mmap_write=true
 batch=1
-sync=true
+sync=false
 disable_wal=false
 
 

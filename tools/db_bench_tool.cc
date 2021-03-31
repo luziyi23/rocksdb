@@ -36,6 +36,7 @@
 #include "db/malloc_stats.h"
 #include "db/version_set.h"
 #include "hdfs/env_hdfs.h"
+#include "pmenv/env_pm.h"
 #include "monitoring/histogram.h"
 #include "monitoring/statistics.h"
 #include "options/cf_options.h"
@@ -668,6 +669,9 @@ DEFINE_bool(use_fsync, false, "If true, issue fsync instead of fdatasync");
 DEFINE_bool(disable_wal, false, "If true, do not write WAL for write.");
 
 DEFINE_string(wal_dir, "", "If not empty, use the given dir for WAL");
+
+DEFINE_bool(enable_pm_wal, false,
+             "Store WAL file to dcpmm device and use pmdk to write/read it. ");
 
 DEFINE_string(truth_db, "/dev/shm/truth_db/dbbench",
               "Truth key/values used when using verify");
@@ -7667,6 +7671,10 @@ int db_bench_tool(int argc, char** argv) {
 
   if (!FLAGS_hdfs.empty()) {
     FLAGS_env = new ROCKSDB_NAMESPACE::HdfsEnv(FLAGS_hdfs);
+  }
+
+  if(FLAGS_enable_pm_wal){
+      FLAGS_env = NewPMEnv(FLAGS_env);
   }
 
   if (!strcasecmp(FLAGS_compaction_fadvice.c_str(), "NONE"))

@@ -1728,4 +1728,6 @@ Status NewEnvLogger(const std::string& fname, Env* env,
 
 std::unique_ptr<Env> NewCompositeEnv(const std::shared_ptr<FileSystem>& fs);
 
+
+Env* NewPMEnv(Env* base_env = nullptr);
 }  // namespace ROCKSDB_NAMESPACE
