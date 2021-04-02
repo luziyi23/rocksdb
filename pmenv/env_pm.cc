@@ -47,16 +47,15 @@ class PMWritableFile : public WritableFile {
       int is_pmem;
       // remmap the file with larger file size
       pmem_unmap(map_base, file_size);
-      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, 0, 0,
-                               &mapped_len, &is_pmem);
+      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, PMEM_FILE_CREATE, 0666,&mapped_len, &is_pmem);
       if (map_base == NULL) {
-        perror("pmem_remap_file");
+        perror("append: pmem_remap_file");
         exit(1);
       }
       file_size += add_size;
     }
-    pmem_memcpy_nodrain(map_base + sizeof(size_t) + data_length, slice.data(),
-                        len);
+    pmem_memcpy_persist(map_base + sizeof(size_t) + data_length, slice.data(),len);
+    // memcpy(map_base + sizeof(size_t) + data_length, slice.data(),len);
     data_length += len;
     return Status::OK();
   }
@@ -68,20 +67,20 @@ class PMWritableFile : public WritableFile {
       int is_pmem;
       // remmap the file with larger file size
       pmem_unmap(map_base, file_size);
-      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, 0, 0,
-                               &map_length, &is_pmem);
+      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, PMEM_FILE_CREATE, 0666,&file_size, &is_pmem);
       if (map_base == NULL) {
-        perror("pmem_remap_file");
+        perror("truncate: pmem_remap_file");
         exit(1);
       }
-      file_size += add_size;
     }
     data_length = size;
     return Status::OK();
   }
 
   Status Close() override {
-    pmem_unmap(map_base, map_length);
+    Sync();
+    // printf("fname:%s closed,filesize=%ldMB,datasize=%ldMB,real_datasize=%ldMB\n",fname_.c_str(),file_size>>20,data_length>>20,*((size_t*)map_base)>>20);
+    pmem_unmap(map_base, file_size);
     return Status::OK();
   }
 
@@ -91,8 +90,16 @@ class PMWritableFile : public WritableFile {
   }
 
   Status Sync() override {
-    // sync metadata filesize
-    pmem_memset_persist(map_base, file_size, sizeof(size_t));
+    // sync the cacheline which is not persist
+    // if(data_length>persist_length_){
+    //     pmem_persist(map_base+sizeof(size_t)+persist_length_,data_length-persist_length_);
+    //     persist_length_=data_length;
+    // }
+    // write file metadata and persist
+    // pmdk write 
+    pmem_memcpy_persist((void*)map_base, &data_length, sizeof(size_t));
+    // force ntstore write
+    // __builtin_ia32_movnti64((long long*)map_base, data_length); __builtin_ia32_sfence();
     return Status::OK();
   }
 
@@ -104,10 +111,10 @@ class PMWritableFile : public WritableFile {
  private:
   PMWritableFile(uint8_t* base, size_t init_size, size_t _size_addition,
                  const std::string& fname)
-      : file_size(init_size),
+      : data_length(0),persist_length_(0),
+      file_size(init_size),
         size_addition(_size_addition),
         map_base(base),
-        map_length(init_size),
         fname_(fname) {
     // reset the data length in offset 0
     pmem_memset_persist(map_base, 0, sizeof(size_t));
@@ -115,11 +122,11 @@ class PMWritableFile : public WritableFile {
 
  private:
   size_t data_length;    // the writen data length
+  size_t persist_length_;
   size_t file_size;      // the length of the whole file
   size_t size_addition;  // expand size_addition bytes
                          // every time left space is not enough
   uint8_t* map_base;        // mmap()-ed area
-  size_t map_length;     // mmap()-ed length
   std::string fname_;
 };
 
@@ -128,24 +135,27 @@ class PMSequentialFile : public SequentialFile {
     static Status Open(const std::string& fname, SequentialFile** p_file) {
     int fd = open(fname.c_str(), O_RDONLY);
     if (fd < 0) {
-      return Status::IOError(std::string("open '").append(fname)
+      return Status::IOError(std::string("PMopen '").append(fname)
                               .append("' failed: ").append(strerror(errno)));
     }
     // get the file size
     struct stat stat;
     if (fstat(fd, &stat) < 0) {
       close(fd);
-      return Status::IOError(std::string("fstat '").append(fname).
+      return Status::IOError(std::string("PMfstat '").append(fname).
                               append("' failed: ").append(strerror(errno)));
     }
-    // whole file
-    void* base = pmem_map_file(fname.c_str(),stat.st_size,O_RDONLY,0,nullptr,nullptr);
-    // no matter map ok or fail, we can close now
     close(fd);
+    size_t maplen;
+    int ispmem;
+    // whole file
+    void* base = pmem_map_file(fname.c_str(),stat.st_size,PMEM_FILE_CREATE,0666,&maplen,&ispmem);
+    // no matter map ok or fail, we can close now
     if (base == NULL) {
-      return Status::IOError(std::string("mmap file failed: ")
+      return Status::IOError(std::string("PMmmap file failed: ")
                               .append(strerror(errno)));
     }
+    // printf("openfile:%s file_size=%ld",fname.c_str(),stat.st_size>>20);
     *p_file = new PMSequentialFile(base, (size_t)stat.st_size);
     return Status::OK();
   }
@@ -171,6 +181,7 @@ Status Read(size_t n, Slice* result, char* /*scratch*/) override {
  private:
     PMSequentialFile(void* base, size_t _file_size):file_size(_file_size) {
         data_length = *((size_t*)base);
+        // printf("data_size=%ldMB\n",data_length>>20);
         data = (uint8_t*)base + sizeof(size_t);
         seek = 0;
     }
@@ -211,7 +222,11 @@ Status PMEnv::NewWritableFile(const std::string& fname,
   }
   return s;
 }
-
+Status PMEnv::DeleteFile(const std::string& fname) {
+  // if it is not a log file, then fall back to original logic
+//   printf("deletefile: %s\n",fname.c_str());
+    return EnvWrapper::DeleteFile(fname);
+}
 Status PMEnv::NewSequentialFile(const std::string& fname,
                                 std::unique_ptr<SequentialFile>* result,
                                 const EnvOptions& env_options) {

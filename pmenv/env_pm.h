@@ -20,14 +20,14 @@ private:
   Status NewWritableFile(const std::string& fname,
                                  std::unique_ptr<WritableFile>* result,
                                  const EnvOptions& env_options) override;
-
+  Status DeleteFile(const std::string& fname)override;
   // The WAL file may have extra format, so should be handled before reading
   Status NewSequentialFile(const std::string& fname,
                                    std::unique_ptr<SequentialFile>* result,
                                    const EnvOptions& options) override;
     
     private:
-    size_t init_size_ = 256 << 20;
+    size_t init_size_ = 128 << 20;
     size_t size_additon_ = 32 << 20;
 };
 
