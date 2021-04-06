@@ -39,47 +39,21 @@ class PMWritableFile : public WritableFile {
     // the least file size to write the new slice
     size_t least_file_size = sizeof(size_t) + data_length + len;
     // left space is not enough, need expand
-    if (least_file_size > file_size) {
-      size_t count = (least_file_size - file_size - 1) / size_addition + 1;
-      size_t add_size = count * size_addition;
-      // remmap the file with larger file_size
-      size_t mapped_len;
-      int is_pmem;
-      // remmap the file with larger file size
-      pmem_unmap(map_base, file_size);
-      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, PMEM_FILE_CREATE, 0666,&mapped_len, &is_pmem);
-      if (map_base == NULL) {
-        perror("append: pmem_remap_file");
-        exit(1);
-      }
-      file_size += add_size;
-    }
-    pmem_memcpy_persist(map_base + sizeof(size_t) + data_length, slice.data(),len);
-    // memcpy(map_base + sizeof(size_t) + data_length, slice.data(),len);
+    MayNeedRemap(least_file_size);
+    // pmem_memcpy_persist(map_base + sizeof(size_t) + data_length, slice.data(),len);
+    memcpy(map_base + sizeof(size_t) + data_length, slice.data(),len);
     data_length += len;
     return Status::OK();
   }
 
   Status Truncate(uint64_t size) override {
-    if (size > file_size) {
-      size_t count = (size - file_size - 1) / size_addition + 1;
-      size_t add_size = count * size_addition;
-      int is_pmem;
-      // remmap the file with larger file size
-      pmem_unmap(map_base, file_size);
-      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, PMEM_FILE_CREATE, 0666,&file_size, &is_pmem);
-      if (map_base == NULL) {
-        perror("truncate: pmem_remap_file");
-        exit(1);
-      }
-    }
+    MayNeedRemap(size);
     data_length = size;
     return Status::OK();
   }
 
   Status Close() override {
     Sync();
-    // printf("fname:%s closed,filesize=%ldMB,datasize=%ldMB,real_datasize=%ldMB\n",fname_.c_str(),file_size>>20,data_length>>20,*((size_t*)map_base)>>20);
     pmem_unmap(map_base, file_size);
     return Status::OK();
   }
@@ -91,15 +65,12 @@ class PMWritableFile : public WritableFile {
 
   Status Sync() override {
     // sync the cacheline which is not persist
-    // if(data_length>persist_length_){
-    //     pmem_persist(map_base+sizeof(size_t)+persist_length_,data_length-persist_length_);
-    //     persist_length_=data_length;
-    // }
+    if(data_length>persist_length_){
+        pmem_persist(map_base+sizeof(size_t)+persist_length_,data_length-persist_length_);
+        persist_length_=data_length;
+    }
     // write file metadata and persist
-    // pmdk write 
     pmem_memcpy_persist((void*)map_base, &data_length, sizeof(size_t));
-    // force ntstore write
-    // __builtin_ia32_movnti64((long long*)map_base, data_length); __builtin_ia32_sfence();
     return Status::OK();
   }
 
@@ -118,6 +89,21 @@ class PMWritableFile : public WritableFile {
         fname_(fname) {
     // reset the data length in offset 0
     pmem_memset_persist(map_base, 0, sizeof(size_t));
+  }
+
+  void MayNeedRemap(size_t new_size){
+      if (new_size > file_size) {
+      size_t count = (new_size - file_size - 1) / size_addition + 1;
+      size_t add_size = count * size_addition;
+      int is_pmem;
+      // remmap the file with larger file size
+      pmem_unmap(map_base, file_size);
+      map_base = (uint8_t*)pmem_map_file(fname_.c_str(), file_size + add_size, PMEM_FILE_CREATE, 0666,&file_size, &is_pmem);
+      if (map_base == NULL) {
+        perror("truncate: pmem_remap_file");
+        exit(1);
+      }
+    }
   }
 
  private:

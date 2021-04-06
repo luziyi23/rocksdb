@@ -1,9 +1,15 @@
+# export PMEM_NO_CLWB=1
+# export PMEM_NO_CLFLUSHOPT=1
+# export PMEM_NO_MOVNT=1 
+export PMEM_MOVNT_THRESHOLD=0
+export PMEM_NO_FLUSH=1
+
 bench_file_path="/home/lzy/rocksdb/db_bench"
 
 bench_db_path="/mnt/optane-ssd/db"
 # bench_db_path="/mnt/ext4-128/db"
-wal_dir="/mnt/optane-ssd/db"
-# wal_dir="/mnt/ext4-128/db"
+# wal_dir="/mnt/optane-ssd/db"
+wal_dir="/mnt/ext4-128/db"
 threads=1
 value_size=100
 bench_benchmarks="fillseq"
@@ -15,8 +21,9 @@ max_bytes_for_level_base="`expr 8 \* 1024 \* 1024 \* 1024`" #default 256 \* 1024
 mmap_write=false
 batch=1
 sync=false
-disable_wal=false
-enable_pm_wal=false
+disable_wal=true
+enable_pm_wal=true
+bytes_per_sync="`expr 128 \* 1024 \* 1024`"
 
 RUN_ONE_TEST(){
     const_params="
@@ -34,7 +41,8 @@ RUN_ONE_TEST(){
     --batch_size=$batch \
     --sync=$sync \
     --disable_wal=$disable_wal \
-    --enable_pm_wal=$enable_pm_wal
+    --enable_pm_wal=$enable_pm_wal \
+    # --wal_bytes_per_sync=$bytes_per_sync
     "
     cmd="$bench_file_path $const_params"
     echo $cmd
@@ -78,7 +86,7 @@ CLEAN_CACHE() {
 }
 
 REMOVE_FILE
-# CLEAN_CACHE
+CLEAN_CACHE
 RUN_ONE_TEST
 # CLEAN_CACHE
 # RUN_READ_TO_VERIFY
