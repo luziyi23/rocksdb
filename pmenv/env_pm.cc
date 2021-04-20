@@ -193,6 +193,10 @@ static bool IsWALFile(const std::string& fname) {
   return EndsWith(fname, ".log");
 }
 
+// static bool IsSSTFile(const std::string& fname) {
+//   return EndsWith(fname, ".sst");
+// }
+
 Status PMEnv::NewWritableFile(const std::string& fname,
                               std::unique_ptr<WritableFile>* result,
                               const EnvOptions& env_options) {
