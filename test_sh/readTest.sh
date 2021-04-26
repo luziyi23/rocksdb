@@ -1,8 +1,8 @@
 # export PMEM_NO_CLWB=1
 # export PMEM_NO_CLFLUSHOPT=1
 # export PMEM_NO_MOVNT=1 
-export PMEM_MOVNT_THRESHOLD=0
-export PMEM_NO_FLUSH=1
+# export PMEM_MOVNT_THRESHOLD=0
+# export PMEM_NO_FLUSH=1
 
 bench_file_path="/home/lzy/rocksdb/db_bench"
 
@@ -16,13 +16,14 @@ bench_benchmarks="readrandom,stats,levelstats"
 bench_num=10000000
 bench_readnum=1000000
 bench_compression="None"
-max_background_jobs=1
+max_background_jobs=3
 # max_bytes_for_level_base="`expr 8 \* 1024 \* 1024 \* 1024`" #default 256 \* 1024 \* 1024
 mmap_write=false
+mmap_read=false
 batch=1
 sync=false
 disable_wal=false
-enable_pm_wal=false
+enable_pm_wal=true
 
 RUN_ONE_TEST(){
     const_params="
@@ -37,11 +38,12 @@ RUN_ONE_TEST(){
     --max_background_jobs=$max_background_jobs \
     --use_existing_db=1 \
     --mmap_write=$mmap_write \
+    --mmap_read=$mmap_read \
     --batch_size=$batch \
     --sync=$sync \
     --disable_wal=$disable_wal \
     --enable_pm_wal=$enable_pm_wal \
-    --statistics=true \
+    # --statistics=true \
     --histogram=1
     "
     cmd="$bench_file_path $const_params"

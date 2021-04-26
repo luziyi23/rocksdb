@@ -1,29 +1,32 @@
 # export PMEM_NO_CLWB=1
 # export PMEM_NO_CLFLUSHOPT=1
 # export PMEM_NO_MOVNT=1 
-export PMEM_MOVNT_THRESHOLD=0
-export PMEM_NO_FLUSH=1
+# export PMEM_MOVNT_THRESHOLD=0
+# export PMEM_NO_FLUSH=1
+ulimit -n 65535
 
 bench_file_path="/home/lzy/rocksdb/db_bench"
 
-# bench_db_path="/mnt/optane-ssd/db"
-bench_db_path="/mnt/ext4-128/db"
-# wal_dir="/mnt/optane-ssd/db"
-wal_dir="/mnt/ext4-128/db"
+bench_db_path="/mnt/optane-ssd/db"
+# bench_db_path="/mnt/ext4-128/db"
+wal_dir="/mnt/optane-ssd/db"
+# wal_dir="/mnt/ext4-128/db"
 threads=1
-value_size=4096
+value_size=1000
 bench_benchmarks="filluniquerandom,stats,levelstats"
-bench_num=3000000
-bench_readnum=1000000
+bench_num=10000000
+bench_readnum=100000
 bench_compression="None"
-max_background_jobs=5
+max_background_jobs=17
 max_background_compactions=`expr $max_background_jobs - 1`
 # max_bytes_for_level_base="`expr 8 \* 1024 \* 1024 \* 1024`" #default 256 \* 1024 \* 1024
 mmap_write=false
+mmap_read=false
 batch=1
 sync=false
 disable_wal=true
-enable_pm_wal=false
+enable_pm_wal=true
+
 
 RUN_ONE_TEST(){
     const_params="
@@ -39,10 +42,13 @@ RUN_ONE_TEST(){
     --max_background_compactions=$max_background_compactions \
     --use_existing_db=0 \
     --mmap_write=$mmap_write \
+    --mmap_read=$mmap_read \
     --batch_size=$batch \
     --sync=$sync \
     --disable_wal=$disable_wal \
     --enable_pm_wal=$enable_pm_wal \
+    --use_direct_io_for_flush_and_compaction=true \
+    #--writable_file_max_buffer_size=65536
     "
     cmd="$bench_file_path $const_params"
     echo $cmd
